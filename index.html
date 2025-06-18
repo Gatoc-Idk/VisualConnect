@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisualConnect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #2c3e50;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .toolbar {
+            width: 250px;
+            background: #34495e;
+            border-right: 1px solid #555;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .toolbar h3 {
+            color: white;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .block-template {
+            width: 100%;
+            height: 50px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            cursor: grab;
+            border: 1px solid #555;
+        }
+
+        .block-template:hover {
+            opacity: 0.8;
+        }
+
+        .block-template.start { background: #27ae60; }
+        .block-template.process { background: #3498db; }
+        .block-template.condition { background: #f39c12; }
+        .block-template.end { background: #e74c3c; }
+        .block-template.input { background: #9b59b6; }
+        .block-template.output { background: #1abc9c; }
+        .block-template.loop { background: #8e44ad; }
+        .block-template.variable { background: #2ecc71; }
+        .block-template.function { background: #34495e; }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workspace {
+            flex: 1;
+            position: relative;
+            background: #34495e;
+            overflow: hidden;
+        }
+
+        .block {
+            position: absolute;
+            width: 100px;
+            height: 60px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            cursor: move;
+            border: 1px solid #555;
+            user-select: none;
+            font-size: 11px;
+            text-align: center;
+        }
+
+        .block.selected {
+            border-color: #f1c40f;
+        }
+
+        .connection-point {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #f1c40f;
+            border-radius: 50%;
+            cursor: crosshair;
+            border: 1px solid white;
+        }
+
+        .connection-point.input {
+            left: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .connection-point.output {
+            right: -6px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .connection {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .connection-line {
+            stroke: #f1c40f;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .connection-temp {
+            stroke: #f1c40f;
+            stroke-width: 2;
+            stroke-dasharray: 5,5;
+            fill: none;
+        }
+
+        .delete-btn {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            width: 20px;
+            height: 20px;
+            background: #e74c3c;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .config-btn {
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            width: 20px;
+            height: 20px;
+            background: #3498db;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 10px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .block:hover .delete-btn,
+        .block.selected .delete-btn,
+        .block:hover .config-btn,
+        .block.selected .config-btn {
+            display: block;
+        }
+
+        .controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            padding: 10px 15px;
+            background: #2c3e50;
+            border: 1px solid #555;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .control-btn:hover {
+            background: #34495e;
+        }
+
+        .code-panel {
+            height: 200px;
+            background: #2c3e50;
+            border-top: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .code-panel.collapsed {
+            height: 40px;
+        }
+
+        .code-header {
+            padding: 10px 15px;
+            background: #34495e;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .code-content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: monospace;
+            color: #2ecc71;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .code-content.hidden {
+            display: none;
+        }
+
+        .language-selector select {
+            background: #2c3e50;
+            border: 1px solid #555;
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+        }
+
+        .config-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .config-modal.hidden {
+            display: none;
+        }
+
+        .config-content {
+            background: #34495e;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #555;
+            min-width: 300px;
+        }
+
+        .config-content h3 {
+            color: white;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .config-field {
+            margin-bottom: 15px;
+        }
+
+        .config-field label {
+            display: block;
+            color: white;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .config-field input,
+        .config-field select,
+        .config-field textarea {
+            width: 100%;
+            padding: 8px;
+            background: #2c3e50;
+            border: 1px solid #555;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+        }
+
+        .config-field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .config-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .config-btn-save,
+        .config-btn-cancel {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .config-btn-save {
+            background: #27ae60;
+            color: white;
+        }
+
+        .config-btn-cancel {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .block-label {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #bdc3c7;
+            white-space: nowrap;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <h3>Blocks</h3>
+            <div class="block-template start" data-type="start">START</div>
+            <div class="block-template input" data-type="input">INPUT</div>
+            <div class="block-template variable" data-type="variable">VARIABLE</div>
+            <div class="block-template process" data-type="process">PROCESS</div>
+            <div class="block-template condition" data-type="condition">IF/ELSE</div>
+            <div class="block-template loop" data-type="loop">LOOP</div>
+            <div class="block-template function" data-type="function">FUNCTION</div>
+            <div class="block-template output" data-type="output">OUTPUT</div>
+            <div class="block-template end" data-type="end">END</div>
+        </div>
+        
+        <div class="main-content">
+            <div class="workspace" id="workspace">
+                <svg class="connection" id="connectionSvg" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></svg>
+                
+                <div class="controls">
+                    <button class="control-btn" onclick="clearWorkspace()">Clear</button>
+                    <button class="control-btn" onclick="toggleCodePanel()">Code</button>
+                </div>
+            </div>
+            
+            <div class="code-panel collapsed" id="codePanel">
+                <div class="code-header" onclick="toggleCodePanel()">
+                    <span>Generated Code</span>
+                    <div class="language-selector">
+                        <select id="languageSelect" onchange="updateGeneratedCode()">
+                            <option value="javascript">JavaScript</option>
+                            <option value="python">Python</option>
+                            <option value="pseudocode">Pseudocode</option>
+                        </select>
+                        <span id="toggleIcon">▲</span>
+                    </div>
+                </div>
+                <div class="code-content hidden" id="codeContent">
+                    Add blocks to generate code
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="config-modal hidden" id="configModal">
+        <div class="config-content">
+            <h3 id="configTitle">Configure Block</h3>
+            <div id="configFields"></div>
+            <div class="config-buttons">
+                <button class="config-btn-save" onclick="saveBlockConfig()">Save</button>
+                <button class="config-btn-cancel" onclick="closeConfigModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let blockCounter = 0;
+        let selectedBlock = null;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let isConnecting = false;
+        let connectionStart = null;
+        let tempConnection = null;
+        let connections = [];
+        let currentConfigBlock = null;
+        let blockConfigs = {};
+
+        const blockTemplates = {
+            start: { 
+                color: '#27ae60', 
+                text: 'START',
+                configurable: false,
+                code: {
+                    javascript: '// Program Start',
+                    python: '# Program Start',
+                    pseudocode: 'BEGIN PROGRAM'
+                }
+            },
+            process: { 
+                color: '#3498db', 
+                text: 'PROCESS',
+                configurable: true,
+                config: {
+                    operation: { type: 'text', label: 'Operation', default: 'processStep()' }
+                },
+                code: {
+                    javascript: (config) => config.operation || 'processStep();',
+                    python: (config) => config.operation || 'process_step()',
+                    pseudocode: (config) => `PROCESS: ${config.operation || 'Execute operation'}`
+                }
+            },
+            condition: { 
+                color: '#f39c12', 
+                text: 'IF/ELSE',
+                configurable: true,
+                config: {
+                    condition: { type: 'text', label: 'Condition', default: 'condition' }
+                },
+                code: {
+                    javascript: (config) => `if (${config.condition || 'condition'}) {\n    // True path\n} else {\n    // False path\n}`,
+                    python: (config) => `if ${config.condition || 'condition'}:\n    # True path\nelse:\n    # False path`,
+                    pseudocode: (config) => `IF ${config.condition || 'condition'} THEN\n    true path\nELSE\n    false path\nENDIF`
+                }
+            },
+            end: { 
+                color: '#e74c3c', 
+                text: 'END',
+                configurable: false,
+                code: {
+                    javascript: '// Program End',
+                    python: '# Program End',
+                    pseudocode: 'END PROGRAM'
+                }
+            },
+            input: { 
+                color: '#9b59b6', 
+                text: 'INPUT',
+                configurable: true,
+                config: {
+                    prompt: { type: 'text', label: 'Prompt Text', default: 'Enter value:' },
+                    variable: { type: 'text', label: 'Variable Name', default: 'input' }
+                },
+                code: {
+                    javascript: (config) => `const ${config.variable || 'input'} = prompt("${config.prompt || 'Enter value:'}");`,
+                    python: (config) => `${config.variable || 'input_value'} = input("${config.prompt || 'Enter value: '}")`,
+                    pseudocode: (config) => `INPUT: ${config.prompt || 'Get user input'} → ${config.variable || 'input'}`
+                }
+            },
+            output: { 
+                color: '#1abc9c', 
+                text: 'OUTPUT',
+                configurable: true,
+                config: {
+                    message: { type: 'text', label: 'Output Message', default: 'result' }
+                },
+                code: {
+                    javascript: (config) => `console.log("${config.message || 'Output:'}", ${config.message || 'result'});`,
+                    python: (config) => `print("${config.message || 'Output:'}", ${config.message || 'result'})`,
+                    pseudocode: (config) => `OUTPUT: Display ${config.message || 'result'}`
+                }
+            },
+            loop: {
+                color: '#8e44ad',
+                text: 'LOOP',
+                configurable: true,
+                config: {
+                    type: { type: 'select', label: 'Loop Type', options: ['for', 'while', 'foreach'], default: 'for' },
+                    condition: { type: 'text', label: 'Loop Condition/Range', default: 'i = 0; i < 10; i++' }
+                },
+                code: {
+                    javascript: (config) => {
+                        const type = config.type || 'for';
+                        const condition = config.condition || 'i = 0; i < 10; i++';
+                        if (type === 'for') return `for (${condition}) {\n    // Loop body\n}`;
+                        if (type === 'while') return `while (${condition}) {\n    // Loop body\n}`;
+                        return `for (${condition}) {\n    // Loop body\n}`;
+                    },
+                    python: (config) => {
+                        const type = config.type || 'for';
+                        const condition = config.condition || 'range(10)';
+                        if (type === 'for') return `for i in ${condition}:\n    # Loop body`;
+                        if (type === 'while') return `while ${condition}:\n    # Loop body`;
+                        return `for item in ${condition}:\n    # Loop body`;
+                    },
+                    pseudocode: (config) => `LOOP ${config.type || 'FOR'} (${config.condition || 'condition'}):\n    loop body\nEND LOOP`
+                }
+            },
+            variable: {
+                color: '#2ecc71',
+                text: 'VARIABLE',
+                configurable: true,
+                config: {
+                    name: { type: 'text', label: 'Variable Name', default: 'myVar' },
+                    value: { type: 'text', label: 'Initial Value', default: '0' },
+                    type: { type: 'select', label: 'Type', options: ['number', 'string', 'boolean', 'array', 'object'], default: 'number' }
+                },
+                code: {
+                    javascript: (config) => {
+                        const name = config.name || 'myVar';
+                        const value = config.value || '0';
+                        const type = config.type || 'number';
+                        
+                        let formattedValue = value;
+                        if (type === 'string') formattedValue = `"${value}"`;
+                        if (type === 'array') formattedValue = `[${value}]`;
+                        if (type === 'object') formattedValue = `{${value}}`;
+                        
+                        return `let ${name} = ${formattedValue};`;
+                    },
+                    python: (config) => {
+                        const name = config.name || 'my_var';
+                        const value = config.value || '0';
+                        const type = config.type || 'number';
+                        
+                        let formattedValue = value;
+                        if (type === 'string') formattedValue = `"${value}"`;
+                        if (type === 'array') formattedValue = `[${value}]`;
+                        if (type === 'object') formattedValue = `{${value}}`;
+                        
+                        return `${name} = ${formattedValue}`;
+                    },
+                    pseudocode: (config) => `DECLARE ${config.name || 'myVar'} AS ${config.type || 'NUMBER'} = ${config.value || '0'}`
+                }
+            },
+            function: {
+                color: '#34495e',
+                text: 'FUNCTION',
+                configurable: true,
+                config: {
+                    name: { type: 'text', label: 'Function Name', default: 'myFunction' },
+                    parameters: { type: 'text', label: 'Parameters', default: 'param1, param2' },
+                    body: { type: 'textarea', label: 'Function Body', default: 'return param1 + param2;' }
+                },
+                code: {
+                    javascript: (config) => {
+                        const name = config.name || 'myFunction';
+                        const params = config.parameters || 'param1, param2';
+                        const body = config.body || 'return param1 + param2;';
+                        return `function ${name}(${params}) {\n    ${body}\n}`;
+                    },
+                    python: (config) => {
+                        const name = config.name || 'my_function';
+                        const params = config.parameters || 'param1, param2';
+                        const body = config.body || 'return param1 + param2';
+                        return `def ${name}(${params}):\n    ${body}`;
+                    },
+                    pseudocode: (config) => {
+                        const name = config.name || 'myFunction';
+                        const params = config.parameters || 'param1, param2';
+                        const body = config.body || 'return param1 + param2';
+                        return `FUNCTION ${name}(${params}):\n    ${body}\nEND FUNCTION`;
+                    }
+                }
+            }
+        };
+
+        document.querySelectorAll('.block-template').forEach(template => {
+            template.addEventListener('mousedown', startTemplateDrag);
+            template.addEventListener('touchstart', startTemplateDrag);
+        });
+
+        function startTemplateDrag(e) {
+            e.preventDefault();
+            const template = e.currentTarget;
+            
+            const handleEnd = (e) => {
+                const touch = e.changedTouches ? e.changedTouches[0] : e;
+                const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+                const workspace = document.getElementById('workspace');
+                
+                if (workspace.contains(elementBelow) || elementBelow === workspace) {
+                    const rect = workspace.getBoundingClientRect();
+                    const x = touch.clientX - rect.left - 50;
+                    const y = touch.clientY - rect.top - 30;
+                    createBlock(template.dataset.type, Math.max(0, x), Math.max(0, y));
+                }
+                
+                document.removeEventListener('mouseup', handleEnd);
+                document.removeEventListener('touchend', handleEnd);
+            };
+            
+            document.addEventListener('mouseup', handleEnd);
+            document.addEventListener('touchend', handleEnd);
+        }
+
+        function createBlock(type, x, y) {
+            const block = document.createElement('div');
+            block.className = 'block';
+            block.id = `block-${blockCounter++}`;
+            block.dataset.type = type;
+            block.style.left = `${x}px`;
+            block.style.top = `${y}px`;
+            block.style.background = blockTemplates[type].color;
+            
+            const configButton = blockTemplates[type].configurable ? 
+                `<button class="config-btn" onclick="openConfigModal('${block.id}')">⚙</button>` : '';
+            
+            block.innerHTML = `
+                ${blockTemplates[type].text}
+                <div class="connection-point input" data-block="${block.id}" data-type="input"></div>
+                <div class="connection-point output" data-block="${block.id}" data-type="output"></div>
+                <button class="delete-btn" onclick="deleteBlock('${block.id}')">&times;</button>
+                ${configButton}
+                <div class="block-label" id="label-${block.id}"></div>
+            `;
+
+            block.addEventListener('mousedown', startBlockDrag);
+            block.addEventListener('touchstart', startBlockDrag);
+
+            document.getElementById('workspace').appendChild(block);
+
+            block.querySelectorAll('.connection-point').forEach(point => {
+                point.addEventListener('mousedown', startConnection);
+                point.addEventListener('touchstart', startConnection);
+            });
+
+            // Initialize default config
+            if (blockTemplates[type].configurable) {
+                blockConfigs[block.id] = {};
+                Object.keys(blockTemplates[type].config).forEach(key => {
+                    blockConfigs[block.id][key] = blockTemplates[type].config[key].default;
+                });
+                updateBlockLabel(block.id);
+            }
+
+            updateGeneratedCode();
+        }
+
+        function openConfigModal(blockId) {
+            currentConfigBlock = blockId;
+            const block = document.getElementById(blockId);
+            const type = block.dataset.type;
+            const template = blockTemplates[type];
+            
+            document.getElementById('configTitle').textContent = `Configure ${template.text}`;
+            
+            const fieldsContainer = document.getElementById('configFields');
+            fieldsContainer.innerHTML = '';
+            
+            Object.keys(template.config).forEach(key => {
+                const field = template.config[key];
+                const currentValue = blockConfigs[blockId][key] || field.default;
+                
+                const fieldDiv = document.createElement('div');
+                fieldDiv.className = 'config-field';
+                
+                let inputElement;
+                if (field.type === 'select') {
+                    inputElement = `<select id="config-${key}">
+                        ${field.options.map(option => 
+                            `<option value="${option}" ${option === currentValue ? 'selected' : ''}>${option}</option>`
+                        ).join('')}
+                    </select>`;
+                } else if (field.type === 'textarea') {
+                    inputElement = `<textarea id="config-${key}" placeholder="${field.default}">${currentValue}</textarea>`;
+                } else {
+                    inputElement = `<input type="text" id="config-${key}" value="${currentValue}" placeholder="${field.default}">`;
+                }
+                
+                fieldDiv.innerHTML = `
+                    <label for="config-${key}">${field.label}:</label>
+                    ${inputElement}
+                `;
+                
+                fieldsContainer.appendChild(fieldDiv);
+            });
+            
+            document.getElementById('configModal').classList.remove('hidden');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('configModal').classList.add('hidden');
+            currentConfigBlock = null;
+        }
+
+        function saveBlockConfig() {
+            if (!currentConfigBlock) return;
+            
+            const block = document.getElementById(currentConfigBlock);
+            const type = block.dataset.type;
+            const template = blockTemplates[type];
+            
+            Object.keys(template.config).forEach(key => {
+                const input = document.getElementById(`config-${key}`);
+                blockConfigs[currentConfigBlock][key] = input.value;
+            });
+            
+            updateBlockLabel(currentConfigBlock);
+            updateGeneratedCode();
+            closeConfigModal();
+        }
+
+        function updateBlockLabel(blockId) {
+            const block = document.getElementById(blockId);
+            const type = block.dataset.type;
+            const config = blockConfigs[blockId];
+            const label = document.getElementById(`label-${blockId}`);
+            
+            if (!label) return;
+            
+            let labelText = '';
+            if (type === 'input' && config.variable) {
+                labelText = config.variable;
+            } else if (type === 'output' && config.message) {
+                labelText = config.message;
+            } else if (type === 'variable' && config.name) {
+                labelText = `${config.name} = ${config.value}`;
+            } else if (type === 'function' && config.name) {
+                labelText = `${config.name}()`;
+            } else if (type === 'condition' && config.condition) {
+                labelText = config.condition;
+            } else if (type === 'loop' && config.type) {
+                labelText = `${config.type} loop`;
+            } else if (type === 'process' && config.operation) {
+                labelText = config.operation;
+            }
+            
+            label.textContent = labelText;
+        }
+
+        function startBlockDrag(e) {
+            if (e.target.classList.contains('connection-point') || 
+                e.target.classList.contains('delete-btn') || 
+                e.target.classList.contains('config-btn')) {
+                return;
+            }
+            
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            
+            isDragging = true;
+            selectedBlock = e.currentTarget;
+            selectedBlock.classList.add('selected');
+            
+            const rect = selectedBlock.getBoundingClientRect();
+            dragOffset.x = touch.clientX - rect.left;
+            dragOffset.y = touch.clientY - rect.top;
+            
+            const handleMove = (e) => {
+                if (!isDragging || !selectedBlock) return;
+                
+                const touch = e.touches ? e.touches[0] : e;
+                const workspaceRect = document.getElementById('workspace').getBoundingClientRect();
+                const x = touch.clientX - workspaceRect.left - dragOffset.x;
+                const y = touch.clientY - workspaceRect.top - dragOffset.y;
+                
+                selectedBlock.style.left = `${Math.max(0, x)}px`;
+                selectedBlock.style.top = `${Math.max(0, y)}px`;
+                
+                updateConnections();
+            };
+            
+            const handleEnd = () => {
+                if (isDragging && selectedBlock) {
+                    selectedBlock.classList.remove('selected');
+                    selectedBlock = null;
+                    isDragging = false;
+                }
+                
+                document.removeEventListener('mousemove', handleMove);
+                document.removeEventListener('mouseup', handleEnd);
+                document.removeEventListener('touchmove', handleMove);
+                document.removeEventListener('touchend', handleEnd);
+            };
+            
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('mouseup', handleEnd);
+            document.addEventListener('touchmove', handleMove);
+            document.addEventListener('touchend', handleEnd);
+        }
+
+        function startConnection(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            isConnecting = true;
+            connectionStart = e.target;
+            
+            const svg = document.getElementById('connectionSvg');
+            tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            tempConnection.classList.add('connection-temp');
+            svg.appendChild(tempConnection);
+            
+            const handleMove = (e) => {
+                if (!isConnecting || !tempConnection) return;
+                
+                const touch = e.touches ? e.touches[0] : e;
+                const workspaceRect = document.getElementById('workspace').getBoundingClientRect();
+                const startRect = connectionStart.getBoundingClientRect();
+                const startX = startRect.left + startRect.width/2 - workspaceRect.left;
+                const startY = startRect.top + startRect.height/2 - workspaceRect.top;
+                const endX = touch.clientX - workspaceRect.left;
+                const endY = touch.clientY - workspaceRect.top;
+                
+                const path = `M ${startX} ${startY} L ${endX} ${endY}`;
+                tempConnection.setAttribute('d', path);
+            };
+            
+            const handleEnd = (e) => {
+                if (isConnecting) {
+                    const touch = e.changedTouches ? e.changedTouches[0] : e;
+                    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                    
+                    if (target && target.classList.contains('connection-point') && target !== connectionStart) {
+                        const startType = connectionStart.dataset.type;
+                        const endType = target.dataset.type;
+                        
+                        if (startType !== endType) {
+                            createConnection(connectionStart, target);
+                        }
+                    }
+                    
+                    if (tempConnection) {
+                        tempConnection.remove();
+                        tempConnection = null;
+                    }
+                    
+                    connectionStart = null;
+                    isConnecting = false;
+                }
+                
+                document.removeEventListener('mousemove', handleMove);
+                document.removeEventListener('mouseup', handleEnd);
+                document.removeEventListener('touchmove', handleMove);
+                document.removeEventListener('touchend', handleEnd);
+            };
+            
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('mouseup', handleEnd);
+            document.addEventListener('touchmove', handleMove);
+            document.addEventListener('touchend', handleEnd);
+        }
+
+        function createConnection(start, end) {
+            const connection = {
+                id: `connection-${connections.length}`,
+                start: start,
+                end: end,
+                startBlock: start.dataset.block,
+                endBlock: end.dataset.block
+            };
+            
+            connections.push(connection);
+            updateConnections();
+            updateGeneratedCode();
+        }
+
+        function updateConnections() {
+            const svg = document.getElementById('connectionSvg');
+            svg.querySelectorAll('.connection-line').forEach(line => line.remove());
+            
+            connections.forEach(conn => {
+                const startRect = conn.start.getBoundingClientRect();
+                const endRect = conn.end.getBoundingClientRect();
+                const workspaceRect = document.getElementById('workspace').getBoundingClientRect();
+                
+                const startX = startRect.left + startRect.width/2 - workspaceRect.left;
+                const startY = startRect.top + startRect.height/2 - workspaceRect.top;
+                const endX = endRect.left + endRect.width/2 - workspaceRect.left;
+                const endY = endRect.top + endRect.height/2 - workspaceRect.top;
+                
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.classList.add('connection-line');
+                path.setAttribute('d', `M ${startX} ${startY} L ${endX} ${endY}`);
+                svg.appendChild(path);
+            });
+        }
+
+        function deleteBlock(blockId) {
+            const block = document.getElementById(blockId);
+            if (block) {
+                connections = connections.filter(conn => 
+                    conn.startBlock !== blockId && conn.endBlock !== blockId
+                );
+                
+                delete blockConfigs[blockId];
+                block.remove();
+                updateConnections();
+                updateGeneratedCode();
+            }
+        }
+
+        function clearWorkspace() {
+            document.getElementById('workspace').querySelectorAll('.block').forEach(block => block.remove());
+            connections = [];
+            blockConfigs = {};
+            updateConnections();
+            updateGeneratedCode();
+            blockCounter = 0;
+        }
+
+        function toggleCodePanel() {
+            const panel = document.getElementById('codePanel');
+            const content = document.getElementById('codeContent');
+            const icon = document.getElementById('toggleIcon');
+            
+            panel.classList.toggle('collapsed');
+            content.classList.toggle('hidden');
+            icon.textContent = panel.classList.contains('collapsed') ? '▲' : '▼';
+        }
+
+        function updateGeneratedCode() {
+            const language = document.getElementById('languageSelect').value;
+            const blocks = Array.from(document.getElementById('workspace').querySelectorAll('.block'));
+            
+            blocks.sort((a, b) => parseInt(a.style.top) - parseInt(b.style.top));
+            
+            let code = '';
+            blocks.forEach((block, index) => {
+                const blockType = block.dataset.type;
+                const blockId = block.id;
+                const config = blockConfigs[blockId] || {};
+                const template = blockTemplates[blockType];
+                
+                if (index > 0) code += '\n\n';
+                
+                if (typeof template.code[language] === 'function') {
+                    code += template.code[language](config);
+                } else {
+                    code += template.code[language];
+                }
+            });
+            
+            if (code === '') {
+                code = language === 'javascript' ? '// Add blocks to generate code' :
+                       language === 'python' ? '# Add blocks to generate code' :
+                       'Add blocks to generate code';
+            }
+            
+            document.getElementById('codeContent').textContent = code;
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('configModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeConfigModal();
+            }
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging || isConnecting) {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>
