@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VisualConnect</title>
+    <title>Visual Coding Engine</title>
     <style>
         * {
             margin: 0;
@@ -64,7 +64,7 @@
         .block-template.loop { background: #8e44ad; }
         .block-template.variable { background: #2ecc71; }
         .block-template.function { background: #34495e; }
-        
+
         .main-content {
             flex: 1;
             display: flex;
@@ -196,6 +196,61 @@
 
         .control-btn:hover {
             background: #34495e;
+        }
+
+        .run-btn {
+            background: #27ae60 !important;
+            font-weight: bold;
+        }
+
+        .run-btn:hover {
+            background: #2ecc71 !important;
+        }
+
+        .output-panel {
+            height: 150px;
+            background: #1a1a1a;
+            border-top: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .output-panel.hidden {
+            display: none;
+        }
+
+        .output-header {
+            padding: 10px 15px;
+            background: #2c3e50;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #555;
+        }
+
+        .output-content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: monospace;
+            color: #ecf0f1;
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .output-error {
+            color: #e74c3c;
+        }
+
+        .output-success {
+            color: #2ecc71;
+        }
+
+        .output-input {
+            color: #f39c12;
         }
 
         .code-panel {
@@ -364,6 +419,7 @@
                 <div class="controls">
                     <button class="control-btn" onclick="clearWorkspace()">Clear</button>
                     <button class="control-btn" onclick="toggleCodePanel()">Code</button>
+                    <button class="control-btn run-btn" onclick="runCode()">▶ Run</button>
                 </div>
             </div>
             
@@ -381,6 +437,16 @@
                 </div>
                 <div class="code-content hidden" id="codeContent">
                     Add blocks to generate code
+                </div>
+            </div>
+
+            <div class="output-panel hidden" id="outputPanel">
+                <div class="output-header">
+                    <span>Program Output</span>
+                    <button class="control-btn" onclick="clearOutput()" style="padding: 5px 10px; font-size: 11px;">Clear</button>
+                </div>
+                <div class="output-content" id="outputContent">
+                    Click "Run" to execute your program...
                 </div>
             </div>
         </div>
@@ -408,6 +474,8 @@
         let connections = [];
         let currentConfigBlock = null;
         let blockConfigs = {};
+        let programOutput = [];
+        let isRunning = false;
 
         const blockTemplates = {
             start: { 
@@ -961,11 +1029,199 @@
             }
         });
 
-        document.addEventListener('touchmove', (e) => {
+            document.addEventListener('touchmove', (e) => {
             if (isDragging || isConnecting) {
                 e.preventDefault();
             }
         });
+
+        // Enhanced console object for capturing output
+        const captureConsole = {
+            log: function(...args) {
+                const message = args.map(arg => 
+                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                ).join(' ');
+                programOutput.push({ type: 'output', message: message });
+                updateOutputDisplay();
+            },
+            error: function(...args) {
+                const message = args.map(arg => String(arg)).join(' ');
+                programOutput.push({ type: 'error', message: message });
+                updateOutputDisplay();
+            },
+            warn: function(...args) {
+                const message = args.map(arg => String(arg)).join(' ');
+                programOutput.push({ type: 'warning', message: '⚠ ' + message });
+                updateOutputDisplay();
+            }
+        };
+
+        // Enhanced prompt function for input simulation
+        function simulatePrompt(message) {
+            const userInput = prompt(message || 'Enter a value:');
+            programOutput.push({ 
+                type: 'input', 
+                message: `${message || 'Input:'} ${userInput || '(cancelled)'}` 
+            });
+            updateOutputDisplay();
+            return userInput;
+        }
+
+        function runCode() {
+            if (isRunning) return;
+            
+            const language = document.getElementById('languageSelect').value;
+            
+            if (language !== 'javascript') {
+                programOutput.push({ 
+                    type: 'error', 
+                    message: `Cannot execute ${language} code directly. Only JavaScript can be run in the browser.` 
+                });
+                updateOutputDisplay();
+                showOutputPanel();
+                return;
+            }
+
+            const blocks = Array.from(document.getElementById('workspace').querySelectorAll('.block'));
+            
+            if (blocks.length === 0) {
+                programOutput.push({ 
+                    type: 'error', 
+                    message: 'No blocks to execute. Add some blocks first!' 
+                });
+                updateOutputDisplay();
+                showOutputPanel();
+                return;
+            }
+
+            // Clear previous output
+            programOutput = [];
+            programOutput.push({ type: 'success', message: '🚀 Program started...\n' });
+            
+            isRunning = true;
+            
+            try {
+                // Sort blocks by vertical position to determine execution order
+                blocks.sort((a, b) => parseInt(a.style.top) - parseInt(b.style.top));
+                
+                // Generate executable JavaScript code
+                let executableCode = '';
+                let hasStart = false;
+                let hasEnd = false;
+                
+                blocks.forEach((block) => {
+                    const blockType = block.dataset.type;
+                    const blockId = block.id;
+                    const config = blockConfigs[blockId] || {};
+                    const template = blockTemplates[blockType];
+                    
+                    if (blockType === 'start') {
+                        hasStart = true;
+                        executableCode += '// Program execution begins\n';
+                    } else if (blockType === 'end') {
+                        hasEnd = true;
+                        executableCode += '// Program execution ends\n';
+                    } else if (blockType === 'input') {
+                        const varName = config.variable || 'input';
+                        const promptText = config.prompt || 'Enter value:';
+                        executableCode += `const ${varName} = simulatePrompt("${promptText}");\n`;
+                    } else if (blockType === 'output') {
+                        const message = config.message || 'result';
+                        if (message.includes('{{') && message.includes('}}')) {
+                            // Handle template variables
+                            const processedMessage = message.replace(/\{\{(\w+)\}\}/g, '" + $1 + "');
+                            executableCode += `captureConsole.log("${processedMessage}");\n`;
+                        } else {
+                            executableCode += `captureConsole.log("${message}");\n`;
+                        }
+                    } else if (blockType === 'variable') {
+                        const name = config.name || 'myVar';
+                        const value = config.value || '0';
+                        const type = config.type || 'number';
+                        
+                        let formattedValue = value;
+                        if (type === 'string') formattedValue = `"${value}"`;
+                        if (type === 'array') formattedValue = `[${value}]`;
+                        if (type === 'object') formattedValue = `{${value}}`;
+                        if (type === 'boolean') formattedValue = value.toLowerCase() === 'true' ? 'true' : 'false';
+                        
+                        executableCode += `let ${name} = ${formattedValue};\n`;
+                    } else if (blockType === 'process') {
+                        const operation = config.operation || 'console.log("Process step")';
+                        executableCode += `${operation.replace(/console\.log/g, 'captureConsole.log')};\n`;
+                    } else if (blockType === 'condition') {
+                        const condition = config.condition || 'true';
+                        executableCode += `if (${condition}) {\n    captureConsole.log("Condition: ${condition} is TRUE");\n} else {\n    captureConsole.log("Condition: ${condition} is FALSE");\n}\n`;
+                    } else if (blockType === 'loop') {
+                        const loopType = config.type || 'for';
+                        const condition = config.condition || 'i = 0; i < 3; i++';
+                        
+                        if (loopType === 'for') {
+                            executableCode += `for (${condition}) {\n    captureConsole.log("Loop iteration:", i);\n}\n`;
+                        } else if (loopType === 'while') {
+                            executableCode += `let loopCount = 0;\nwhile (${condition} && loopCount < 10) {\n    captureConsole.log("While loop iteration:", loopCount);\n    loopCount++;\n}\n`;
+                        }
+                    } else if (blockType === 'function') {
+                        const name = config.name || 'myFunction';
+                        const params = config.parameters || '';
+                        const body = config.body || 'return "Hello from function";';
+                        
+                        executableCode += `function ${name}(${params}) {\n    ${body.replace(/console\.log/g, 'captureConsole.log')}\n}\n`;
+                        executableCode += `captureConsole.log("Function ${name} defined");\n`;
+                    }
+                });
+                
+                if (!hasStart) {
+                    programOutput.push({ 
+                        type: 'warning', 
+                        message: 'No START block found. Executing anyway...' 
+                    });
+                }
+                
+                // Execute the generated code
+                const func = new Function('captureConsole', 'simulatePrompt', executableCode);
+                func(captureConsole, simulatePrompt);
+                
+                if (hasEnd) {
+                    programOutput.push({ type: 'success', message: '\n✅ Program completed successfully!' });
+                } else {
+                    programOutput.push({ type: 'warning', message: '\n⚠ No END block found, but program completed.' });
+                }
+                
+            } catch (error) {
+                programOutput.push({ 
+                    type: 'error', 
+                    message: `💥 Runtime Error: ${error.message}` 
+                });
+            } finally {
+                isRunning = false;
+                updateOutputDisplay();
+                showOutputPanel();
+            }
+        }
+
+        function updateOutputDisplay() {
+            const outputContent = document.getElementById('outputContent');
+            outputContent.innerHTML = '';
+            
+            programOutput.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `output-${item.type}`;
+                div.textContent = item.message;
+                outputContent.appendChild(div);
+            });
+            
+            outputContent.scrollTop = outputContent.scrollHeight;
+        }
+
+        function showOutputPanel() {
+            document.getElementById('outputPanel').classList.remove('hidden');
+        }
+
+        function clearOutput() {
+            programOutput = [];
+            document.getElementById('outputContent').textContent = 'Output cleared. Click "Run" to execute your program...';
+        }
     </script>
 </body>
 </html>
